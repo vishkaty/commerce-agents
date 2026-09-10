@@ -47,6 +47,7 @@ from merchant_agent import (
     ChangeLedger,
     ChangeNotApplicable,
     DataLimitation,
+    GuardrailViolation,
     InventoryActionItem,
     InventoryAlert,
     Listing,
@@ -718,6 +719,18 @@ class MockRetailMerchant(MerchantBackend):
             margin_impact -= discount_value * pace * 7
             promo_price = round(product.price * (1 - promotion.discount_pct / 100), 2)
             unit_cost = row.get("unit_cost") or 0.0
+            # The pricing context states a floor (cost plus 15%); a promotion is a price
+            # move like any other and may not take the listing under it. The discount cap
+            # alone does not protect a listing whose margin is thinner than the cap.
+            floor = round(unit_cost * 1.15, 2) if unit_cost else None
+            if floor is not None and promo_price < floor:
+                raise GuardrailViolation(
+                    [
+                        f"{listing_id} at {promo_price:.2f} would be under its floor of "
+                        f"{floor:.2f}; the most it can take is "
+                        f"{(1 - floor / product.price) * 100:.0f}%"
+                    ]
+                )
             if unit_cost and promo_price > 0:
                 margin_before = margin_pct(product.price, unit_cost)
                 margin_after = margin_pct(promo_price, unit_cost)

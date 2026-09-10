@@ -425,3 +425,29 @@ async def test_another_merchants_session_sees_and_changes_nothing(merchant):
     with pytest.raises(ChangeNotApplicable):
         await merchant.discard_change(other, change.change_id)
     assert [c.change_id for c in await merchant.get_pending_changes(session)] == [change.change_id]
+
+
+async def test_a_promotion_may_not_take_a_listing_under_its_floor(merchant):
+    from merchant_agent import MerchantSessionContext, PromotionDraft
+    from merchant_agent.changes import GuardrailViolation
+
+    session = MerchantSessionContext(
+        session_id="m-floor", merchant_id=merchant.merchant_id, operator="demo-operator"
+    )
+    context = await merchant.get_pricing_context(session, "AR-1001")
+    assert context is not None and context.min_price is not None
+    # A discount inside the cap that still lands under the floor.
+    under = (1 - context.min_price / context.current_price) * 100 + 5
+    assert under <= merchant.config.max_promotion_discount_pct
+    with pytest.raises(GuardrailViolation):
+        await merchant.stage_promotion(
+            session,
+            PromotionDraft(
+                name="Too deep for the margin",
+                listing_ids=["AR-1001"],
+                discount_pct=round(under, 1),
+                starts="2026-09-10",
+                ends="2026-09-12",
+            ),
+        )
+    assert await merchant.get_pending_changes(session) == []
