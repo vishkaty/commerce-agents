@@ -89,7 +89,9 @@ class BaseAgentConfig(BaseModel):
         """The request fields that carry `thinking_effort`, for every model call the
         agent makes on `model`."""
         if self.thinking_effort is None:
-            return {"thinking": {"type": "disabled"}}
+            # Omitted rather than `disabled`: models that always think reject an explicit
+            # `disabled` with a 400, and omitting the field means "the model's default".
+            return {}
         return {
             "thinking": {"type": "adaptive"},
             "output_config": {"effort": self.thinking_effort},
